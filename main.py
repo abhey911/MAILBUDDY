@@ -52,6 +52,18 @@ def initialize_session_state():
     
     if 'check_interval' not in st.session_state:
         st.session_state.check_interval = 5  # minutes
+    
+    if 'smtp_email' not in st.session_state:
+        st.session_state.smtp_email = ""
+    
+    if 'smtp_password' not in st.session_state:
+        st.session_state.smtp_password = ""
+    
+    if 'smtp_server' not in st.session_state:
+        st.session_state.smtp_server = "smtp.gmail.com"
+    
+    if 'smtp_port' not in st.session_state:
+        st.session_state.smtp_port = 587
 
 
 def new_emails_callback(new_emails: List[Dict]):
@@ -139,6 +151,11 @@ def configure_imap_section():
                         if folder_manager.ensure_folders_exist():
                             st.session_state.folder_manager = folder_manager
                             st.session_state.imap_configured = True
+                            # Store SMTP credentials for sending
+                            st.session_state.smtp_email = smtp_email
+                            st.session_state.smtp_password = smtp_password
+                            st.session_state.smtp_server = smtp_server
+                            st.session_state.smtp_port = int(smtp_port)
                             st.success("✅ IMAP connected successfully!")
                             st.rerun()
                         else:
@@ -407,12 +424,21 @@ def pending_emails_section():
                             )
                             
                             # Send via SMTP
-                            sender = st.session_state.email_sender
-                            if sender:
-                                success = sender.send_reply(
-                                    to_email=email_data.get('sender', ''),
+                            smtp_email = st.session_state.get('smtp_email')
+                            smtp_password = st.session_state.get('smtp_password')
+                            smtp_server = st.session_state.get('smtp_server', 'smtp.gmail.com')
+                            smtp_port = st.session_state.get('smtp_port', 587)
+                            
+                            if smtp_email and smtp_password:
+                                success, message = send_email(
+                                    sender_email=smtp_email,
+                                    sender_password=smtp_password,
+                                    recipient_email=email_data.get('sender', ''),
                                     subject=f"Re: {email_data.get('subject', '')}",
-                                    body=response
+                                    body=response,
+                                    smtp_server=smtp_server,
+                                    smtp_port=smtp_port,
+                                    original_message_id=email_data.get('message_id')
                                 )
                                 
                                 if success:
@@ -420,25 +446,30 @@ def pending_emails_section():
                                     st.success("✅ Response sent!")
                                     st.rerun()
                                 else:
-                                    st.error("❌ Failed to send")
+                                    st.error(f"❌ {message}")
                             else:
-                                st.error("❌ Email sender not configured")
+                                st.error("❌ SMTP not configured. Please connect to IMAP first.")
                 
                 with col4:
                     folder = st.session_state.folder_manager.get_folder_for_category(triage_result.category)
                     if st.button(f"📁 Move to {folder[:8]}", key=f"move_{idx}", use_container_width=True):
                         with st.spinner(f"Moving to {folder}..."):
-                            success = st.session_state.folder_manager.move_email(
-                                email_data.get('id'),
-                                "INBOX",
-                                folder
-                            )
-                            if success:
-                                st.session_state.pending_emails.pop(idx)
-                                st.success(f"✅ Moved to {folder}!")
-                                st.rerun()
+                            # Use 'id' field which is the IMAP message ID
+                            imap_msg_id = email_data.get('id')
+                            if imap_msg_id:
+                                success = st.session_state.folder_manager.move_email(
+                                    imap_msg_id,
+                                    "INBOX",
+                                    folder
+                                )
+                                if success:
+                                    st.session_state.pending_emails.pop(idx)
+                                    st.success(f"✅ Moved to {folder}!")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Failed to move email")
                             else:
-                                st.error("❌ Failed to move email")
+                                st.error("❌ Email ID not found")
                 
                 with col5:
                     if st.button("🗑️ Dismiss", key=f"dismiss_{idx}", use_container_width=True):
@@ -551,6 +582,115 @@ def generated_drafts_section():
                     if st.button("🗑️ Discard", key=f"discard_{email_id}", use_container_width=True):
                         del st.session_state.draft_responses[email_id]
                         st.rerun()
+
+
+def classified_folders_section():
+    """Render section to browse emails in classified folders."""
+    if not st.session_state.imap_configured:
+        return
+    
+    with st.expander("📁 Browse Classified Folders", expanded=False):
+        st.markdown("### View Emails by Category")
+        
+        # Folder selection
+        folders = {
+            "🔴 Urgent": "Urgent",
+            "🟡 Important": "Important",
+            "📰 Newsletters": "Newsletters",
+            "🎁 Promotions": "Promotions",
+            "🧾 Receipts": "Receipts",
+            "📄 Archive": "Archive"
+        }
+        
+        selected_folder_display = st.selectbox(
+            "Select Folder:",
+            options=list(folders.keys())
+        )
+        
+        selected_folder = folders[selected_folder_display]
+        
+        col1, col2 = st.columns([1, 3])
+        
+        with col1:
+            limit = st.number_input("Emails to show:", min_value=5, max_value=50, value=10, step=5)
+        
+        with col2:
+            if st.button("🔄 Load Folder", use_container_width=True):
+                with st.spinner(f"Loading emails from {selected_folder}..."):
+                    try:
+                        emails = st.session_state.folder_manager.fetch_recent_emails(selected_folder, limit=limit)
+                        st.session_state[f'folder_emails_{selected_folder}'] = emails
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error loading folder: {str(e)}")
+        
+        # Display folder emails
+        folder_key = f'folder_emails_{selected_folder}'
+        if folder_key in st.session_state and st.session_state[folder_key]:
+            emails = st.session_state[folder_key]
+            st.markdown(f"**{len(emails)} email(s) in {selected_folder}**")
+            
+            for idx, email_data in enumerate(emails):
+                with st.container():
+                    st.markdown("---")
+                    
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        st.markdown(f"**From:** {email_data.get('sender', 'Unknown')}")
+                        st.markdown(f"**Subject:** {email_data.get('subject', 'No Subject')}")
+                        st.caption(f"Date: {email_data.get('date', 'Unknown')}")
+                    
+                    with col2:
+                        if st.button("👁️ View", key=f"view_folder_{selected_folder}_{idx}", use_container_width=True):
+                            st.session_state[f'viewing_email_{idx}'] = not st.session_state.get(f'viewing_email_{idx}', False)
+                            st.rerun()
+                    
+                    # Show email body if viewing
+                    if st.session_state.get(f'viewing_email_{idx}', False):
+                        st.text_area(
+                            "Email Body:",
+                            value=email_data.get('body', ''),
+                            height=200,
+                            key=f"folder_body_{selected_folder}_{idx}",
+                            disabled=True
+                        )
+                        
+                        # Actions
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            if st.button("↩️ Move to INBOX", key=f"move_inbox_{selected_folder}_{idx}", use_container_width=True):
+                                imap_msg_id = email_data.get('id')
+                                if imap_msg_id:
+                                    success = st.session_state.folder_manager.move_email(
+                                        imap_msg_id,
+                                        selected_folder,
+                                        "INBOX"
+                                    )
+                                    if success:
+                                        st.success("✅ Moved to INBOX!")
+                                        # Remove from current view
+                                        st.session_state[folder_key].pop(idx)
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ Failed to move")
+                        
+                        with col2:
+                            if st.button("📤 Reply", key=f"reply_{selected_folder}_{idx}", use_container_width=True):
+                                # Add to drafts for replying
+                                email_id = email_data.get('message_id', email_data.get('id'))
+                                if email_id not in st.session_state.draft_responses:
+                                    st.session_state.draft_responses[email_id] = {
+                                        'email_data': email_data,
+                                        'response': '',
+                                        'tone': 'Professional',
+                                        'original_index': idx
+                                    }
+                                    st.success("✅ Added to drafts!")
+                                    st.rerun()
+        else:
+            st.info(f"Click 'Load Folder' to view emails in {selected_folder}")
 
 
 def manual_compose_section():
@@ -698,6 +838,7 @@ def main():
     configure_imap_section()
     automated_monitor_section()
     pending_emails_section()
+    classified_folders_section()
     generated_drafts_section()
     manual_compose_section()
     
