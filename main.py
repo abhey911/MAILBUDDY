@@ -52,18 +52,6 @@ def initialize_session_state():
     
     if 'check_interval' not in st.session_state:
         st.session_state.check_interval = 5  # minutes
-    
-    if 'smtp_email' not in st.session_state:
-        st.session_state.smtp_email = ""
-    
-    if 'smtp_password' not in st.session_state:
-        st.session_state.smtp_password = ""
-    
-    if 'smtp_server' not in st.session_state:
-        st.session_state.smtp_server = "smtp.gmail.com"
-    
-    if 'smtp_port' not in st.session_state:
-        st.session_state.smtp_port = 587
 
 
 def new_emails_callback(new_emails: List[Dict]):
@@ -151,11 +139,6 @@ def configure_imap_section():
                         if folder_manager.ensure_folders_exist():
                             st.session_state.folder_manager = folder_manager
                             st.session_state.imap_configured = True
-                            # Store SMTP credentials for sending
-                            st.session_state.smtp_email = smtp_email
-                            st.session_state.smtp_password = smtp_password
-                            st.session_state.smtp_server = smtp_server
-                            st.session_state.smtp_port = int(smtp_port)
                             st.success("✅ IMAP connected successfully!")
                             st.rerun()
                         else:
@@ -423,9 +406,9 @@ def pending_emails_section():
                                 api_key=api_key if api_key else None
                             )
                             
-                            # Send via SMTP
-                            smtp_email = st.session_state.get('smtp_email')
-                            smtp_password = st.session_state.get('smtp_password')
+                            # Send via SMTP - read directly from widget keys
+                            smtp_email = st.session_state.get('smtp_email', '')
+                            smtp_password = st.session_state.get('smtp_password', '')
                             smtp_server = st.session_state.get('smtp_server', 'smtp.gmail.com')
                             smtp_port = st.session_state.get('smtp_port', 587)
                             
@@ -448,7 +431,7 @@ def pending_emails_section():
                                 else:
                                     st.error(f"❌ {message}")
                             else:
-                                st.error("❌ SMTP not configured. Please connect to IMAP first.")
+                                st.error("❌ SMTP not configured. Please enter SMTP credentials in Email Server Settings.")
                 
                 with col4:
                     folder = st.session_state.folder_manager.get_folder_for_category(triage_result.category)
