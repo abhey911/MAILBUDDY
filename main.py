@@ -158,8 +158,44 @@ def configure_imap_section():
                 else:
                     st.warning("⚠️ Please enter API key first")
         
+        with col3:
+            if st.button("📬 Fetch Latest Emails", use_container_width=True):
+                if st.session_state.folder_manager:
+                    with st.spinner("Fetching emails from INBOX..."):
+                        try:
+                            recent_emails = st.session_state.folder_manager.fetch_recent_emails("INBOX", limit=10)
+                            if recent_emails:
+                                # Add to pending queue
+                                new_count = 0
+                                for email_data in recent_emails:
+                                    # Check if already in pending
+                                    msg_id = email_data.get('message_id', email_data.get('id'))
+                                    already_exists = any(
+                                        e.get('message_id') == msg_id or e.get('id') == msg_id 
+                                        for e in st.session_state.pending_emails
+                                    )
+                                    if not already_exists:
+                                        st.session_state.pending_emails.append(email_data)
+                                        new_count += 1
+                                
+                                if new_count > 0:
+                                    st.success(f"✅ Fetched {new_count} email(s)!")
+                                    st.rerun()
+                                else:
+                                    st.info("All emails already in queue")
+                            else:
+                                st.info("No emails found in INBOX")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+                else:
+                    st.warning("⚠️ Connect to IMAP first")
+        
         if st.session_state.imap_configured:
             st.success("🟢 IMAP is configured and connected")
+            
+            # Show pending emails count
+            if st.session_state.pending_emails:
+                st.info(f"📬 {len(st.session_state.pending_emails)} email(s) in pending queue")
 
 
 def automated_monitor_section():
@@ -211,15 +247,36 @@ def automated_monitor_section():
         
         with col3:
             if st.button("🔄 Check Now", use_container_width=True):
-                if st.session_state.inbox_monitor:
+                if st.session_state.folder_manager:
                     with st.spinner("Checking for new emails..."):
-                        new_emails = st.session_state.inbox_monitor.check_for_new_emails()
-                        if new_emails:
-                            st.session_state.pending_emails.extend(new_emails)
-                            st.success(f"✅ Found {len(new_emails)} new email(s)!")
-                            st.rerun()
-                        else:
-                            st.info("No new emails found")
+                        # Use folder_manager directly to fetch emails
+                        try:
+                            recent_emails = st.session_state.folder_manager.fetch_recent_emails("INBOX", limit=20)
+                            if recent_emails:
+                                # Filter out already seen emails
+                                new_count = 0
+                                for email_data in recent_emails:
+                                    # Check if already in pending
+                                    msg_id = email_data.get('message_id', email_data.get('id'))
+                                    already_exists = any(
+                                        e.get('message_id') == msg_id or e.get('id') == msg_id 
+                                        for e in st.session_state.pending_emails
+                                    )
+                                    if not already_exists:
+                                        st.session_state.pending_emails.append(email_data)
+                                        new_count += 1
+                                
+                                if new_count > 0:
+                                    st.success(f"✅ Found {new_count} new email(s)!")
+                                    st.rerun()
+                                else:
+                                    st.info("No new emails (all already in queue)")
+                            else:
+                                st.info("No emails found in INBOX")
+                        except Exception as e:
+                            st.error(f"Error fetching emails: {str(e)}")
+                else:
+                    st.warning("⚠️ Please connect to IMAP first")
         
         # Status display
         if st.session_state.inbox_monitor:
@@ -336,6 +393,38 @@ def pending_emails_section():
                             st.rerun()
                 
                 with col3:
+                    if st.button("📤 Send Response", key=f"send_resp_{idx}", use_container_width=True):
+                        with st.spinner("Generating and sending response..."):
+                            api_key = st.session_state.get('gemini_api_key', '')
+                            important_info = st.session_state.get(f'important_info_{idx}', '')
+                            
+                            # Generate response
+                            response = generate_email_response(
+                                email_data.get('body', ''),
+                                tone=tone,
+                                important_info=important_info if important_info else None,
+                                api_key=api_key if api_key else None
+                            )
+                            
+                            # Send via SMTP
+                            sender = st.session_state.email_sender
+                            if sender:
+                                success = sender.send_reply(
+                                    to_email=email_data.get('sender', ''),
+                                    subject=f"Re: {email_data.get('subject', '')}",
+                                    body=response
+                                )
+                                
+                                if success:
+                                    st.session_state.pending_emails.pop(idx)
+                                    st.success("✅ Response sent!")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Failed to send")
+                            else:
+                                st.error("❌ Email sender not configured")
+                
+                with col4:
                     folder = st.session_state.folder_manager.get_folder_for_category(triage_result.category)
                     if st.button(f"📁 Move to {folder[:8]}", key=f"move_{idx}", use_container_width=True):
                         with st.spinner(f"Moving to {folder}..."):
@@ -351,7 +440,7 @@ def pending_emails_section():
                             else:
                                 st.error("❌ Failed to move email")
                 
-                with col4:
+                with col5:
                     if st.button("🗑️ Dismiss", key=f"dismiss_{idx}", use_container_width=True):
                         st.session_state.pending_emails.pop(idx)
                         st.rerun()
