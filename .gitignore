@@ -2,9 +2,14 @@
 .venv/
 venv/
 env/
+ENV/
+env.bak/
+venv.bak/
 
-# Streamlit
+# Streamlit secrets (CRITICAL - NEVER COMMIT!)
 .streamlit/
+.streamlit/secrets.toml
+streamlit/secrets.toml
 
 # Python
 __pycache__/
@@ -15,20 +20,44 @@ __pycache__/
 *.egg-info
 dist/
 build/
+.Python
+*.pyc
+.pytest_cache/
 
-# User data (sensitive)
+# User data (sensitive - NEVER COMMIT!)
 data/known_contacts.json
+data/*.json
+!data/*.example.json
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.code-workspace
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Secrets
+# Secrets and credentials (CRITICAL - NEVER COMMIT!)
 .env
+.env.local
+.env.*.local
 secrets.toml
+*secrets.toml
+*.secret
+*.key
+*password*
+*credentials*
+config.local.py
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+~*
