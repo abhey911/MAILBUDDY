@@ -1,8 +1,4 @@
-"""
-Email Agent
 
-AI-powered email response generation using Google Gemini API.
-"""
 
 import os
 from typing import Optional
@@ -40,7 +36,7 @@ def generate_email_response(
         
         # Configure Gemini
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Build prompt
         prompt = _build_gemini_prompt(email_text, tone, important_info)
@@ -244,7 +240,7 @@ def test_gemini_connection(api_key: str) -> tuple[bool, str]:
         import google.generativeai as genai
         
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Try a simple generation
         response = model.generate_content("Say 'API connection successful' if you can read this.")

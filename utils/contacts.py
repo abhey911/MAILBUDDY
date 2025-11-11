@@ -1,8 +1,3 @@
-"""
-Contact Management Utilities
-
-Load and save known contacts for email triage.
-"""
 
 import json
 import os

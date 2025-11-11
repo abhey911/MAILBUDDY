@@ -1,8 +1,4 @@
-"""
-MailBuddy Utils Package
 
-This package contains utility modules for email management.
-"""
 
 from .contacts import load_contacts, save_contacts
 from .email_folder_manager import EmailFolderManager
