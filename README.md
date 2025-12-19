@@ -187,5 +187,10 @@ MIT License - feel free to use this project for personal or commercial purposes.
 For issues and questions, please open an issue on GitHub.
 
 ---
+## QUICK DEMO VIDEO
+Watch a complete walkthrough of MailBuddy 
+https://drive.google.com/file/d/1LMbcgiVboXF6QQfc39zrsyRrAGurGi_x/view?usp=sharing
 
-**Made with ❤️ using Streamlit and Google Gemini**
+---
+
+**Made with  using Streamlit and Google Gemini**
